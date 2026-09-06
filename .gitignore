@@ -18,3 +18,5 @@ logs/
 *.pt
 *.pth
 *.onnx
+# ML test files
+ml-model/test_vehicles.jpg

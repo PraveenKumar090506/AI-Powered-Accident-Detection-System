@@ -3,7 +3,24 @@ from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 
+from .models.emergency_event import EmergencyEvent
+from .services.emergency_alert import AlertRecipient, EmergencyAlertService
 from .video_analysis import InvalidVideoError, PROJECT_ROOT, analyze_video_file
+
+DEFAULT_MOCK_RECIPIENTS = [
+    AlertRecipient(
+        recipient_id="police-mock-1",
+        recipient_type="police",
+        name="Mock Police Station",
+        contact="000-POLICE",
+    ),
+    AlertRecipient(
+        recipient_id="ambulance-mock-1",
+        recipient_type="ambulance",
+        name="Mock Ambulance Unit",
+        contact="000-AMBULANCE",
+    ),
+]
 
 UPLOADS_DIR = PROJECT_ROOT / "uploads"
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
@@ -28,6 +45,22 @@ def health():
         "status": "ok",
         "message": "Accident Detection API is running",
     }
+
+
+@app.post("/emergency-alert")
+def emergency_alert(event: EmergencyEvent):
+    """Simulate a mock emergency alert. Does not contact real services."""
+    if not event.accident_suspected:
+        return {
+            "event_id": event.event_id,
+            "number_of_recipients": 0,
+            "recipients_notified": [],
+            "message": "No alert sent because accident_suspected is false.",
+            "status": "not_sent",
+        }
+
+    service = EmergencyAlertService(DEFAULT_MOCK_RECIPIENTS)
+    return service.send_alert(event)
 
 
 @app.post("/analyze-video")

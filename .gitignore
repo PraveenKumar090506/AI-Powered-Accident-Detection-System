@@ -20,3 +20,5 @@ logs/
 *.onnx
 # ML test files
 ml-model/test_vehicles.jpg
+# ML test videos
+ml-model/test_tracking.mp4

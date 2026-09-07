@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 
-from app.video_analysis import InvalidVideoError, PROJECT_ROOT, analyze_video_file
+from .video_analysis import InvalidVideoError, PROJECT_ROOT, analyze_video_file
 
 UPLOADS_DIR = PROJECT_ROOT / "uploads"
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}

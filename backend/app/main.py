@@ -5,6 +5,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 
 from .models.emergency_event import EmergencyEvent
 from .services.emergency_alert import AlertRecipient, EmergencyAlertService
+from .services.location_service import LocationProvider
 from .video_analysis import InvalidVideoError, PROJECT_ROOT, analyze_video_file
 
 DEFAULT_MOCK_RECIPIENTS = [
@@ -59,8 +60,24 @@ def emergency_alert(event: EmergencyEvent):
             "status": "not_sent",
         }
 
+    location = LocationProvider().get_location()
+    event = event.model_copy(
+        update={
+            "latitude": event.latitude
+            if event.latitude is not None
+            else location["latitude"],
+            "longitude": event.longitude
+            if event.longitude is not None
+            else location["longitude"],
+        }
+    )
+
     service = EmergencyAlertService(DEFAULT_MOCK_RECIPIENTS)
-    return service.send_alert(event)
+    result = service.send_alert(event)
+    response = result.model_dump()
+    response["latitude"] = event.latitude
+    response["longitude"] = event.longitude
+    return response
 
 
 @app.post("/analyze-video")

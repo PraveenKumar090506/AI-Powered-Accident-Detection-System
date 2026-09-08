@@ -7,9 +7,12 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 try:
-    from app.models.emergency_event import EmergencyEvent
-except ImportError:
-    from models.emergency_event import EmergencyEvent
+    from ..models.emergency_event import EmergencyEvent
+except (ImportError, ValueError):
+    try:
+        from app.models.emergency_event import EmergencyEvent
+    except ImportError:
+        from models.emergency_event import EmergencyEvent
 
 RecipientType = Literal["police", "ambulance"]
 MOCK_ALERT_STATUS = "mock_delivered"

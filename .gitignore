@@ -22,3 +22,9 @@ logs/
 ml-model/test_vehicles.jpg
 # ML test videos
 ml-model/test_tracking.mp4
+
+# Local demo/test artifacts
+ml-model/accident_demo.mp4
+ml-model/evidence/
+backend/app/openh264-2.5.0-win64.dll
+openh264-2.5.0-win64.dll

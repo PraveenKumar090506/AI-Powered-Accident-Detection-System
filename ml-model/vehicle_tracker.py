@@ -98,7 +98,12 @@ class VehicleTracker:
         """Clear movement history and YOLO tracker state for a new video."""
         self._previous_centers.clear()
         if hasattr(self.detector.model, "predictor") and self.detector.model.predictor is not None:
-            self.detector.model.predictor.trackers = []
+            predictor = self.detector.model.predictor
+            if hasattr(predictor, "trackers"):
+                for t in predictor.trackers:
+                    if hasattr(t, "reset"):
+                        t.reset()
+                delattr(predictor, "trackers")
 
     def update(self, frame: np.ndarray) -> list[TrackedVehicle]:
         """Track vehicles in the next video frame.

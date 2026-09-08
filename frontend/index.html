@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Accident Detection &amp; Emergency Alert System</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="layout-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-icon">🚨</span>
+        <div class="brand-text">
+          <h2>Accident Detection</h2>
+          <span class="brand-badge">Safety System</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button type="button" class="nav-item active" data-page="dashboard">
+          <span class="nav-icon">🏠</span>
+          <span class="nav-label">Dashboard</span>
+        </button>
+        <button type="button" class="nav-item" data-page="analyze">
+          <span class="nav-icon">🎥</span>
+          <span class="nav-label">Analyze Video</span>
+        </button>
+        <button type="button" class="nav-item" data-page="location">
+          <span class="nav-icon">📍</span>
+          <span class="nav-label">Location</span>
+        </button>
+        <button type="button" class="nav-item" data-page="alerts">
+          <span class="nav-icon">🚨</span>
+          <span class="nav-label">Alerts</span>
+        </button>
+        <button type="button" class="nav-item" data-page="settings">
+          <span class="nav-icon">⚙️</span>
+          <span class="nav-label">Settings</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="system-health-indicator">
+          <span class="status-dot online" id="sidebarStatusDot"></span>
+          <span class="status-text" id="sidebarStatusText">System Online</span>
+        </div>
+        <small class="version-text">v0.1.0 Prototype</small>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Bar -->
+      <header class="topbar">
+        <div class="topbar-title-wrap">
+          <h1 id="pageTitle">Accident Detection Dashboard</h1>
+          <p id="pageSubtitle">Real-time road incident monitoring and automatic first-responder dispatch.</p>
+        </div>
+        <div class="topbar-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="quickSampleBtn">Load Sample Video</button>
+          <button type="button" class="btn btn-primary btn-sm" id="topbarAnalyzeBtn">New Video Analysis</button>
+        </div>
+      </header>
+
+      <div class="content-scroll">
+        <!-- ================= PAGE 1: DASHBOARD ================= -->
+        <section class="page-view active" id="page-dashboard">
+          <!-- Main 5 Core Information Cards -->
+          <div class="dashboard-grid">
+            <!-- 1. System Status -->
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">1. System Status</span>
+                <span class="card-tag tag-normal" id="dashSystemTag">Connected</span>
+              </div>
+              <div class="card-body">
+                <div class="status-highlight">
+                  <span class="status-indicator-dot online" id="dashStatusDot"></span>
+                  <span class="status-main-text" id="dashSystemText">Online</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Backend Host:</span>
+                  <span class="meta-value">127.0.0.1:8001</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">API Health:</span>
+                  <span class="meta-value text-success" id="dashHealthStatus">Responding (200 OK)</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. Accident Status -->
+            <div class="card" id="dashAccidentCard">
+              <div class="card-header">
+                <span class="card-title">2. Accident Status</span>
+                <span class="card-tag tag-normal" id="dashAccidentTag">Normal</span>
+              </div>
+              <div class="card-body">
+                <div class="status-highlight">
+                  <span class="status-banner-badge badge-normal" id="dashAccidentBadge">No Accident Detected</span>
+                </div>
+                <p class="status-note" id="dashAccidentNote">Traffic flow is normal. No collision verified.</p>
+              </div>
+            </div>
+
+            <!-- 3. Last Analysis -->
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">3. Last Analysis</span>
+                <span class="card-tag">Video Input</span>
+              </div>
+              <div class="card-body">
+                <div class="meta-row">
+                  <span class="meta-label">Video Name:</span>
+                  <span class="meta-value" id="dashLastVideo">None</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Frames Processed:</span>
+                  <span class="meta-value" id="dashLastFrames">0</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Confidence:</span>
+                  <span class="meta-value" id="dashLastConfidence">0.0%</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4. Location -->
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">4. Location</span>
+                <span class="card-tag">Camera Site</span>
+              </div>
+              <div class="card-body">
+                <div class="meta-row">
+                  <span class="meta-label">Latitude:</span>
+                  <span class="meta-value" id="dashLat">13.0827° N</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Longitude:</span>
+                  <span class="meta-value" id="dashLng">80.2707° E</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Site Address:</span>
+                  <span class="meta-value">Anna Salai, Chennai</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 5. Emergency Alert -->
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">5. Emergency Alert</span>
+                <span class="card-tag" id="dashAlertTag">Standby</span>
+              </div>
+              <div class="card-body">
+                <div class="meta-row">
+                  <span class="meta-label">Police Alert:</span>
+                  <span class="meta-value" id="dashPolice">Standby (000-POLICE)</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Ambulance Alert:</span>
+                  <span class="meta-value" id="dashAmbulance">Standby (000-AMBULANCE)</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Alert Status:</span>
+                  <span class="meta-value" id="dashAlertStatus">Ready / No Alert Required</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Navigation Banner -->
+          <div class="info-callout">
+            <div class="callout-text">
+              <h3>Run CCTV Video Analysis</h3>
+              <p>Upload a recorded or live CCTV video stream to run vehicle tracking and collision verification.</p>
+            </div>
+            <button type="button" class="btn btn-primary" id="dashGoToAnalyzeBtn">Open Analyze Video</button>
+          </div>
+        </section>
+
+        <!-- ================= PAGE 2: ANALYZE VIDEO ================= -->
+        <section class="page-view" id="page-analyze">
+          <div class="page-card">
+            <div class="page-card-header">
+              <h2>CCTV Video Verification</h2>
+              <p>Upload a CCTV video to check for possible accidents.</p>
+            </div>
+
+            <div class="upload-container">
+              <input type="file" id="videoFileInput" accept="video/mp4,video/avi,video/mov,video/mkv,video/webm" style="display: none;">
+              
+              <div class="file-pick-row">
+                <button type="button" class="btn btn-secondary" id="chooseVideoBtn">
+                  📁 Choose Video
+                </button>
+                <span class="selected-filename" id="selectedFilenameDisplay">No video selected</span>
+                <button type="button" class="btn btn-link btn-sm" id="useSampleVideoBtn">Use Sample Video (test_tracking.mp4)</button>
+              </div>
+
+              <div class="action-row">
+                <button type="button" class="btn btn-primary" id="startAnalyzeBtn" disabled>
+                  Analyze Video
+                </button>
+                <button type="button" class="btn btn-outline" id="simulateAccidentDemoBtn">
+                  Simulate Accident (Demo)
+                </button>
+              </div>
+
+              <!-- Processing indicator -->
+              <div class="processing-state" id="processingState" style="display: none;">
+                <div class="spinner"></div>
+                <div class="processing-text">
+                  <strong>Analyzing video with AI...</strong>
+                  <span>Running vehicle detection, multi-frame tracking, and collision verification.</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Result Section with Dual Video and 7 Required Metrics -->
+            <div class="analysis-result-container" id="analysisResultContainer" style="display: none;">
+              <!-- Prominent Result Banners -->
+              <!-- 1. Safe Result -->
+              <div class="result-box result-safe" id="resultSafeBox" style="display: none;">
+                <div class="result-header">
+                  <span class="result-icon-safe">✓</span>
+                  <h3>No Accident Detected</h3>
+                </div>
+                <p class="result-message">
+                  The video analysis completed successfully. All tracked vehicles maintained safe trajectory and standard velocity. No collisions were verified.
+                </p>
+              </div>
+
+              <!-- 2. Accident Detected Result -->
+              <div class="result-box result-danger" id="resultDangerBox" style="display: none;">
+                <div class="result-header">
+                  <span class="result-icon-danger">⚠</span>
+                  <div>
+                    <h3>Accident Detected</h3>
+                    <p class="result-subtitle">Collision verified across multiple consecutive video frames.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Dual Video Display: Original Video & Processed / Detection Video -->
+              <div class="video-dual-grid">
+                <div class="video-box-card">
+                  <div class="video-box-header">
+                    <h4>Original Video</h4>
+                    <span class="video-pill">Input Stream</span>
+                  </div>
+                  <div class="video-element-wrap">
+                    <video id="originalVideoPlayer" controls playsinline></video>
+                    <div class="video-placeholder" id="originalVideoPlaceholder">No video loaded</div>
+                  </div>
+                </div>
+
+                <div class="video-box-card">
+                  <div class="video-box-header">
+                    <h4>Processed / Detection Video</h4>
+                    <span class="video-pill pill-ai">YOLO + Tracking Annotations</span>
+                  </div>
+                  <div class="video-element-wrap">
+                    <video id="processedVideoPlayer" controls playsinline></video>
+                    <div class="video-placeholder" id="processedVideoPlaceholder">Processed video will appear here</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 7 Required Metadata Fields Below Video -->
+              <div class="analysis-metrics-card">
+                <h4 class="metrics-card-title">Incident Analysis &amp; Status</h4>
+                <div class="metrics-7-grid">
+                  <!-- 1. Accident Status -->
+                  <div class="metric-item">
+                    <span class="metric-lbl">Accident Status</span>
+                    <span class="metric-txt font-bold" id="metricAccidentStatus">--</span>
+                  </div>
+
+                  <!-- 2. Confidence -->
+                  <div class="metric-item">
+                    <span class="metric-lbl">Confidence</span>
+                    <span class="metric-txt" id="metricConfidenceScore">--</span>
+                  </div>
+
+                  <!-- 3. Frames Processed -->
+                  <div class="metric-item">
+                    <span class="metric-lbl">Frames Processed</span>
+                    <span class="metric-txt" id="metricTotalFrames">--</span>
+                  </div>
+
+                  <!-- 4. Involved Vehicle IDs -->
+                  <div class="metric-item">
+                    <span class="metric-lbl">Involved Vehicle IDs</span>
+                    <span class="metric-txt" id="metricInvolvedIds">None</span>
+                  </div>
+
+                  <!-- 5. Evidence -->
+                  <div class="metric-item full-row">
+                    <span class="metric-lbl">Evidence</span>
+                    <div class="evidence-display-area" id="evidenceDisplayArea">
+                      <code class="evidence-code" id="metricEvidencePath">None captured</code>
+                      <div class="evidence-thumb-container" id="evidenceThumbContainer" style="display: none;">
+                        <img id="evidenceThumbImg" src="" alt="Accident Evidence">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 6. Location -->
+                  <div class="metric-item">
+                    <span class="metric-lbl">Location</span>
+                    <span class="metric-txt" id="metricLocationCoords">13.0827° N, 80.2707° E</span>
+                  </div>
+
+                  <!-- 7. Emergency Alert Status -->
+                  <div class="metric-item">
+                    <span class="metric-lbl">Emergency Alert Status</span>
+                    <span class="metric-txt font-bold" id="metricEmergencyAlertStatus">Standby</span>
+                  </div>
+
+                  <!-- Reasons (preserved when available) -->
+                  <div class="metric-item full-row" id="metricReasonsRow" style="display: none;">
+                    <span class="metric-lbl">Verification Reasons</span>
+                    <ul class="reason-list" id="metricReasonsList"></ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= PAGE 3: LOCATION ================= -->
+        <section class="page-view" id="page-location">
+          <div class="page-card">
+            <div class="page-card-header">
+              <h2>Current Detection Location</h2>
+              <p>Camera installation site geolocation provided by LocationProvider service.</p>
+            </div>
+
+            <div class="location-details-box">
+              <div class="location-stat-row">
+                <div class="location-stat-box">
+                  <span class="loc-label">Latitude</span>
+                  <span class="loc-val" id="locLat">13.0827° N</span>
+                </div>
+                <div class="location-stat-box">
+                  <span class="loc-label">Longitude</span>
+                  <span class="loc-val" id="locLng">80.2707° E</span>
+                </div>
+                <div class="location-stat-box">
+                  <span class="loc-label">Camera Identifier</span>
+                  <span class="loc-val">CAM-CHN-024</span>
+                </div>
+                <div class="location-stat-box">
+                  <span class="loc-label">Intersection Site</span>
+                  <span class="loc-val">Anna Salai Highway, Chennai</span>
+                </div>
+              </div>
+
+              <div class="map-placeholder">
+                <div class="pin-symbol">📍</div>
+                <h3>13.0827, 80.2707</h3>
+                <p>Anna Salai, Chennai, Tamil Nadu, India</p>
+                <small>Mock geolocation provider coordinates used in emergency dispatch payloads</small>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= PAGE 4: ALERTS ================= -->
+        <section class="page-view" id="page-alerts">
+          <div class="page-card">
+            <div class="page-card-header flex-between">
+              <div>
+                <h2>Emergency Alerts Log</h2>
+                <p>Recent automated first-responder notifications generated by POST /emergency-alert.</p>
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm" id="testAlertBtn">Send Test Alert</button>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Police Alert</th>
+                    <th>Ambulance Alert</th>
+                    <th>Status</th>
+                    <th>Location</th>
+                    <th>Event ID</th>
+                  </tr>
+                </thead>
+                <tbody id="alertsTableBody">
+                  <tr>
+                    <td>System Start</td>
+                    <td>Mock Police Station (000-POLICE)</td>
+                    <td>Mock Ambulance Unit (000-AMBULANCE)</td>
+                    <td><span class="table-badge badge-standby">Standby</span></td>
+                    <td>13.0827, 80.2707</td>
+                    <td><code>init-standby</code></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= PAGE 5: SETTINGS ================= -->
+        <section class="page-view" id="page-settings">
+          <div class="page-card">
+            <div class="page-card-header">
+              <h2>System Settings &amp; Information</h2>
+              <p>Current architecture configuration and server health.</p>
+            </div>
+
+            <div class="settings-grid">
+              <div class="settings-card">
+                <h3>System Information</h3>
+                <div class="meta-row">
+                  <span class="meta-label">Backend Framework:</span>
+                  <span class="meta-value">FastAPI (Python 3.12)</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Vision Engine:</span>
+                  <span class="meta-value">OpenCV + Ultralytics YOLOv8</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Model Weights:</span>
+                  <span class="meta-value">yolov8n.pt</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Verification Logic:</span>
+                  <span class="meta-value">Multi-Frame Temporal Trajectory Analysis</span>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <h3>Backend Server Status</h3>
+                <div class="meta-row">
+                  <span class="meta-label">Server Host:</span>
+                  <span class="meta-value">127.0.0.1:8001</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Health API:</span>
+                  <span class="meta-value text-success" id="settingsHealthText">Responding (200 OK)</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Alert Provider:</span>
+                  <span class="meta-value">Mock Emergency Alert Service</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Location Provider:</span>
+                  <span class="meta-value">Static Mock Geocoding (Chennai)</span>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <h3>Prototype Version</h3>
+                <div class="meta-row">
+                  <span class="meta-label">Application:</span>
+                  <span class="meta-value">AI Accident Detection</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Build:</span>
+                  <span class="meta-value">v0.1.0-hackathon-demo</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Environment:</span>
+                  <span class="meta-value">Local Prototype Demo</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="/script.js"></script>
+</body>
+</html>

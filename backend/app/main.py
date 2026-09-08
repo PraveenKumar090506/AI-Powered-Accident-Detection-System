@@ -2,6 +2,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .models.emergency_event import EmergencyEvent
 from .services.emergency_alert import AlertRecipient, EmergencyAlertService
@@ -24,6 +26,14 @@ DEFAULT_MOCK_RECIPIENTS = [
 ]
 
 UPLOADS_DIR = PROJECT_ROOT / "uploads"
+PROCESSED_DIR = UPLOADS_DIR / "processed"
+PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+ORIGINAL_DIR = UPLOADS_DIR / "original"
+ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
+FRONTEND_DIR = PROJECT_ROOT / "frontend"
+ML_MODEL_DIR = PROJECT_ROOT / "ml-model"
+EVIDENCE_DIR = ML_MODEL_DIR / "evidence"
+EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
 
 app = FastAPI(
@@ -35,6 +45,9 @@ app = FastAPI(
 
 @app.get("/")
 def welcome():
+    index_file = FRONTEND_DIR / "index.html"
+    if index_file.is_file():
+        return FileResponse(index_file)
     return {
         "message": "Welcome to the AI-Powered Accident Detection and Emergency Alert System API"
     }
@@ -93,27 +106,48 @@ async def analyze_video(file: UploadFile = File(...)):
             detail="Invalid uploaded file: expected a video",
         )
 
-    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-    temp_path = UPLOADS_DIR / f"{uuid4().hex}{suffix or '.mp4'}"
+    ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
+    orig_filename = f"orig_{uuid4().hex[:12]}{suffix or '.mp4'}"
+    orig_path = ORIGINAL_DIR / orig_filename
+    original_video_url = f"/original/{orig_filename}"
 
     try:
         contents = await file.read()
         if not contents:
             raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-        temp_path.write_bytes(contents)
+        orig_path.write_bytes(contents)
 
         try:
-            return analyze_video_file(temp_path)
+            return analyze_video_file(orig_path, original_video_url=original_video_url)
         except InvalidVideoError as exc:
+            orig_path.unlink(missing_ok=True)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except HTTPException:
+            orig_path.unlink(missing_ok=True)
             raise
         except Exception as exc:
+            orig_path.unlink(missing_ok=True)
             raise HTTPException(
                 status_code=500,
                 detail=f"Video processing failed: {exc}",
             ) from exc
     finally:
         await file.close()
-        temp_path.unlink(missing_ok=True)
+
+
+if PROCESSED_DIR.is_dir():
+    app.mount("/processed", StaticFiles(directory=PROCESSED_DIR), name="processed")
+
+if ORIGINAL_DIR.is_dir():
+    app.mount("/original", StaticFiles(directory=ORIGINAL_DIR), name="original")
+
+if EVIDENCE_DIR.is_dir():
+    app.mount("/evidence", StaticFiles(directory=EVIDENCE_DIR), name="evidence")
+
+if ML_MODEL_DIR.is_dir():
+    app.mount("/ml-model", StaticFiles(directory=ML_MODEL_DIR), name="ml-model")
+
+if FRONTEND_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR), name="frontend")
+

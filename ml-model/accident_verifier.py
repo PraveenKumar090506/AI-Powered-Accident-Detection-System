@@ -108,18 +108,18 @@ class AccidentVerifier:
         closeness_weight: float = 0.35,
         motion_weight: float = 0.20,
     ) -> None:
-        """Create a verifier with tunable geometric and temporal thresholds.
+        """Create a verifier with tunable geometric, kinematic, and temporal thresholds.
 
         Args:
             iou_threshold: IoU at which boxes are treated as overlapping.
-            close_distance_px: Center distance (pixels) treated as very close.
+            close_distance_px: Minimum center distance (pixels) treated as close.
             sudden_movement_px: Movement distance in one frame treated as abrupt.
-            sudden_movement_delta_px: Change vs the previous frame's movement.
+            sudden_movement_delta_px: Change vs previous frame's movement treated as abrupt.
             pair_score_threshold: Minimum combined score for a suspicious pair.
-            min_consecutive_frames: Suspicious frames required before suspicion.
+            min_consecutive_frames: Suspicious frames required before confirmation.
             overlap_weight: Contribution of IoU to the pair score.
-            closeness_weight: Contribution of center proximity to the pair score.
-            motion_weight: Contribution of sudden movement to the pair score.
+            closeness_weight: Contribution of proximity to the pair score.
+            motion_weight: Contribution of motion/stopping anomalies to the pair score.
         """
         if min_consecutive_frames < 2:
             raise ValueError("min_consecutive_frames must be at least 2")
@@ -136,13 +136,25 @@ class AccidentVerifier:
 
         # Consecutive suspicious-frame counts, keyed by sorted track-id pair.
         self._pair_streaks: dict[tuple[int, int], int] = {}
-        # Previous per-track movement distance, used to detect sudden change.
-        self._previous_movement: dict[int, float] = {}
+        # Previous per-track movement (dx, dy, distance), used to detect sudden changes.
+        self._previous_movement: dict[int, tuple[float, float, float]] = {}
+        # Previous pairwise distance, used to detect rapid convergence.
+        self._previous_distance: dict[tuple[int, int], float] = {}
+        # Consecutive stopped frames per track ID.
+        self._stopped_frames: dict[int, int] = {}
+        # Maximum speed seen per track ID, ensuring a vehicle was moving before stopping.
+        self._max_speed_seen: dict[int, float] = {}
+        # Memory of recent kinematic anomalies per pair, decaying over time.
+        self._recent_motion_event: dict[tuple[int, int], int] = {}
 
     def reset(self) -> None:
         """Clear temporal state before analyzing a new video."""
         self._pair_streaks.clear()
         self._previous_movement.clear()
+        self._previous_distance.clear()
+        self._stopped_frames.clear()
+        self._max_speed_seen.clear()
+        self._recent_motion_event.clear()
 
     def update(
         self,
@@ -153,6 +165,8 @@ class AccidentVerifier:
         A pair must stay suspicious for ``min_consecutive_frames`` before
         ``accident_suspected`` becomes True.
         """
+        self._update_vehicle_state(tracked_vehicles)
+
         assessments = self._assess_pairs(tracked_vehicles)
         suspicious_pairs = {
             assessment.track_ids for assessment in assessments if assessment.suspicious
@@ -162,9 +176,19 @@ class AccidentVerifier:
         confirmed = self._confirmed_pairs()
 
         self._previous_movement = {
-            vehicle.track_id: float(vehicle.movement.distance)
+            vehicle.track_id: (
+                float(vehicle.movement.dx),
+                float(vehicle.movement.dy),
+                float(vehicle.movement.distance),
+            )
             for vehicle in tracked_vehicles
         }
+
+        new_prev_dist: dict[tuple[int, int], float] = {}
+        for va, vb in combinations(tracked_vehicles, 2):
+            pkey = self._pair_key(va.track_id, vb.track_id)
+            new_prev_dist[pkey] = center_distance(va.center, vb.center)
+        self._previous_distance = new_prev_dist
 
         if not confirmed:
             return AccidentVerificationResult(
@@ -184,6 +208,22 @@ class AccidentVerifier:
             reasons=tuple(reasons),
         )
 
+    def _update_vehicle_state(self, tracked_vehicles: Sequence[TrackedVehicleLike]) -> None:
+        """Track speeds and consecutive stationary frames for active vehicles."""
+        current_ids = {v.track_id for v in tracked_vehicles}
+        for vehicle in tracked_vehicles:
+            tid = vehicle.track_id
+            spd = float(vehicle.movement.distance)
+            self._max_speed_seen[tid] = max(self._max_speed_seen.get(tid, 0.0), spd)
+            if spd < 1.2:
+                self._stopped_frames[tid] = self._stopped_frames.get(tid, 0) + 1
+            else:
+                self._stopped_frames[tid] = 0
+
+        for tid in list(self._stopped_frames):
+            if tid not in current_ids:
+                del self._stopped_frames[tid]
+
     def _assess_pairs(
         self,
         tracked_vehicles: Sequence[TrackedVehicleLike],
@@ -199,50 +239,127 @@ class AccidentVerifier:
         vehicle_a: TrackedVehicleLike,
         vehicle_b: TrackedVehicleLike,
     ) -> PairAssessment:
-        """Combine overlap, closeness, and motion into one pair score."""
+        """Combine proximity, kinematics, direction change, and abnormal stopping into one pair score."""
         track_ids = self._pair_key(vehicle_a.track_id, vehicle_b.track_id)
         iou = bbox_iou(vehicle_a.bbox, vehicle_b.bbox)
-        distance = center_distance(vehicle_a.center, vehicle_b.center)
-        sudden_a = self._is_sudden_movement(vehicle_a)
-        sudden_b = self._is_sudden_movement(vehicle_b)
+        dist = center_distance(vehicle_a.center, vehicle_b.center)
 
+        box_a = vehicle_a.bbox
+        box_b = vehicle_b.bbox
+        w_a = max(1, box_a[2] - box_a[0])
+        h_a = max(1, box_a[3] - box_a[1])
+        w_b = max(1, box_b[2] - box_b[0])
+        h_b = max(1, box_b[3] - box_b[1])
+        diag_a = hypot(w_a, h_a)
+        diag_b = hypot(w_b, h_b)
+        scale = max(1.0, (diag_a + diag_b) / 2.0)
+
+        # Adaptive closeness based on bounding-box scale, capped to avoid screen-wide false matches.
+        adaptive_close_px = min(220.0, max(self.close_distance_px, scale * 1.8))
+
+        gap_x = max(0, max(box_a[0] - box_b[2], box_b[0] - box_a[2]))
+        gap_y = max(0, max(box_a[1] - box_b[3], box_b[1] - box_a[3]))
+        edge_dist = hypot(gap_x, gap_y)
+
+        # 1. Spatial Proximity: box overlap, adaptive center distance, or edge-to-edge separation.
         overlap_score = min(1.0, iou / self.iou_threshold) if self.iou_threshold else 0.0
-        closeness_score = self._closeness_score(distance)
-        motion_score = 1.0 if (sudden_a or sudden_b) else 0.0
+        center_closeness = max(0.0, 1.0 - (dist / adaptive_close_px)) if adaptive_close_px > 0 else 0.0
+        edge_closeness = max(0.0, 1.0 - (edge_dist / (scale * 1.5)))
+        closeness_score = max(center_closeness, edge_closeness)
+        spatial_score = max(overlap_score, closeness_score)
 
-        score = (
-            self.overlap_weight * overlap_score
-            + self.closeness_weight * closeness_score
-            + self.motion_weight * motion_score
+        geometrically_involved = (
+            dist <= 250.0
+            and (
+                iou >= self.iou_threshold
+                or dist <= adaptive_close_px
+                or edge_dist <= scale * 1.2
+            )
         )
 
         reasons: list[str] = []
         if iou >= self.iou_threshold:
+            reasons.append(f"tracks {track_ids[0]} and {track_ids[1]} overlap (IoU={iou:.2f})")
+        if dist <= self.close_distance_px:
+            reasons.append(f"tracks {track_ids[0]} and {track_ids[1]} are very close ({dist:.1f}px)")
+        elif geometrically_involved:
             reasons.append(
-                f"tracks {track_ids[0]} and {track_ids[1]} overlap (IoU={iou:.2f})"
+                f"tracks {track_ids[0]} and {track_ids[1]} are in proximity "
+                f"({dist:.1f}px, edge {edge_dist:.1f}px)"
             )
-        if distance <= self.close_distance_px:
-            reasons.append(
-                f"tracks {track_ids[0]} and {track_ids[1]} are very close "
-                f"({distance:.1f}px)"
+
+        # 2. Kinematic and Behavioral Anomaly Signals.
+        sudden_a = self._is_sudden_movement(vehicle_a)
+        sudden_b = self._is_sudden_movement(vehicle_b)
+        dir_a = self._is_sudden_direction(vehicle_a)
+        dir_b = self._is_sudden_direction(vehicle_b)
+
+        prev_d = self._previous_distance.get(track_ids)
+        rapid_approach = False
+        if prev_d is not None and (prev_d - dist) >= max(5.0, 0.06 * scale):
+            rapid_approach = True
+
+        stop_a = self._stopped_frames.get(vehicle_a.track_id, 0)
+        stop_b = self._stopped_frames.get(vehicle_b.track_id, 0)
+        had_motion_a = self._max_speed_seen.get(vehicle_a.track_id, 0.0) >= 3.0
+        had_motion_b = self._max_speed_seen.get(vehicle_b.track_id, 0.0) >= 3.0
+
+        abnormal_stop = (
+            geometrically_involved
+            and (
+                (stop_a >= 3 and had_motion_a and stop_b >= 3 and had_motion_b)
+                or ((stop_a >= 8 and had_motion_a) or (stop_b >= 8 and had_motion_b))
             )
+        )
+
         if sudden_a:
             reasons.append(f"track {vehicle_a.track_id} had a sudden movement change")
         if sudden_b:
             reasons.append(f"track {vehicle_b.track_id} had a sudden movement change")
+        if dir_a:
+            reasons.append(f"track {vehicle_a.track_id} had a sudden direction change")
+        if dir_b:
+            reasons.append(f"track {vehicle_b.track_id} had a sudden direction change")
+        if rapid_approach:
+            reasons.append(f"tracks {track_ids[0]} and {track_ids[1]} rapidly converged")
+        if abnormal_stop:
+            reasons.append(f"tracks {track_ids[0]} and {track_ids[1]} exhibited abnormal stopping")
 
-        # Geometric contact (overlap or very close) is required; motion boosts score.
-        geometrically_involved = (
-            iou >= self.iou_threshold or distance <= self.close_distance_px
+        has_current_anomaly = (
+            sudden_a or sudden_b or dir_a or dir_b or rapid_approach or abnormal_stop
         )
-        suspicious = geometrically_involved and score >= self.pair_score_threshold
+
+        if has_current_anomaly:
+            self._recent_motion_event[track_ids] = 0
+        elif track_ids in self._recent_motion_event:
+            self._recent_motion_event[track_ids] += 1
+            if self._recent_motion_event[track_ids] > 20:
+                del self._recent_motion_event[track_ids]
+
+        # Motion score bridges impact spikes with post-collision rest.
+        motion_score = 0.0
+        if has_current_anomaly:
+            motion_score = 1.0
+        elif track_ids in self._recent_motion_event:
+            recency = 1.0 - (self._recent_motion_event[track_ids] / 20.0)
+            motion_score = max(0.0, 0.8 * recency)
+
+        # Composite score: requires both geometric proximity and kinematic anomaly.
+        score = 0.45 * spatial_score + 0.55 * motion_score
+
+        suspicious = (
+            geometrically_involved
+            and (motion_score >= 0.5)
+            and (score >= self.pair_score_threshold)
+        )
+
         return PairAssessment(
             track_ids=track_ids,
-            score=score,
+            score=round(score, 3),
             suspicious=suspicious,
             reasons=tuple(reasons),
             iou=iou,
-            center_distance=distance,
+            center_distance=dist,
         )
 
     def _closeness_score(self, distance: float) -> float:
@@ -254,14 +371,38 @@ class AccidentVerifier:
         return 1.0 - (distance / self.close_distance_px)
 
     def _is_sudden_movement(self, vehicle: TrackedVehicleLike) -> bool:
-        """True if this track jumped or changed speed sharply versus last frame."""
+        """True if this track jumped, braked, or changed speed sharply versus last frame."""
         current = float(vehicle.movement.distance)
-        previous = self._previous_movement.get(vehicle.track_id)
-        if previous is None:
+        prev = self._previous_movement.get(vehicle.track_id)
+        if prev is None:
+            return current >= self.sudden_movement_px
+
+        prev_spd = prev[2]
+        delta = abs(current - prev_spd)
+        box = vehicle.bbox
+        diag = hypot(max(1, box[2] - box[0]), max(1, box[3] - box[1]))
+
+        return (
+            current >= self.sudden_movement_px
+            or delta >= self.sudden_movement_delta_px
+            or delta >= max(5.0, 0.06 * diag)
+        )
+
+    def _is_sudden_direction(self, vehicle: TrackedVehicleLike) -> bool:
+        """True if this track swerved sharply while moving at significant speed."""
+        current_spd = float(vehicle.movement.distance)
+        prev = self._previous_movement.get(vehicle.track_id)
+        if prev is None:
             return False
-        if current >= self.sudden_movement_px:
-            return True
-        return abs(current - previous) >= self.sudden_movement_delta_px
+
+        prev_dx, prev_dy, prev_spd = prev
+        if current_spd >= 4.0 and prev_spd >= 4.0:
+            dot = vehicle.movement.dx * prev_dx + vehicle.movement.dy * prev_dy
+            cos_theta = dot / (current_spd * prev_spd)
+            cos_theta = max(-1.0, min(1.0, cos_theta))
+            if cos_theta < 0.2:  # > ~78 degrees sharp turn
+                return True
+        return False
 
     def _update_streaks(self, suspicious_pairs: set[tuple[int, int]]) -> None:
         """Increment streaks for active pairs; reset pairs that are no longer suspicious."""
